@@ -1,0 +1,1407 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Outbound Planning</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; }
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background: #0d1117;
+  color: #eee;
+  padding: 6px 10px;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+/* ── HEADER ── */
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+  gap: 10px;
+}
+h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #fff;
+  flex: 1;
+  text-align: center;
+}
+.date-display {
+  font-size: 15px;
+  color: #aaa;
+  white-space: nowrap;
+}
+
+/* ── TOOLBAR ── */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex-shrink: 0;
+}
+.toolbar button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.btn-row    { background: #27ae60; color: #fff; }
+.btn-export { background: #8e44ad; color: #fff; }
+.btn-reset  { background: #c0392b; color: #fff; }
+.btn-admin      { background: #f39c12; color: #fff; }
+.btn-logout     { background: #555; color: #fff; display: none; }
+.btn-fullscreen { background: #2c3e50; color: #fff; }
+
+/* admin-only elements hidden by default */
+.admin-only { display: none !important; }
+body.admin-mode .admin-only { display: inline-flex !important; }
+body.admin-mode .btn-logout { display: inline-block !important; }
+body.admin-mode .btn-admin  { display: none !important; }
+
+/* ── LEGEND ── */
+.legend {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #ccc; }
+.legend-dot  { width: 15px; height: 15px; border-radius: 3px; flex-shrink: 0; }
+
+/* ── TABLE WRAPPER ── */
+.table-wrap {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 3px solid #444;
+  border-radius: 2px;
+  display: block;
+}
+
+/* ── TABLE ── */
+.board {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: #fff;
+}
+.board th {
+  color: #fff;
+  text-align: center;
+  font-size: var(--header-font, 16px);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 6px 4px;
+  border: 2px solid #555;
+}
+.board td {
+  border: 2px solid #bbb;
+  padding: 2px 5px;
+  vertical-align: middle;
+  position: relative;
+  overflow: hidden;
+}
+.col-afdeling {
+  width: 260px;
+  background: #f0f0f0;
+  vertical-align: middle;
+  padding: 2px 6px;
+  border-right: 3px solid #888;
+}
+.th-a           { background: #c0392b; }
+.th-b           { background: #2471a3; }
+.th-verlof      { background: #1e8449; }
+.th-tijdskrediet{ background: #7d3c98; }
+.th-ziek        { background: #d35400; }
+
+/* ── AFD LABEL ── */
+.afd-wrap { display: flex; align-items: center; gap: 6px; }
+.afd-label {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: var(--badge-font, 13px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex: 1;
+  word-break: break-word;
+  line-height: 1.3;
+}
+.afd-orange { background: #e67e22; color: #fff; }
+.afd-red    { background: #c0392b; color: #fff; }
+.afd-blue   { background: #2980b9; color: #fff; }
+.afd-plain  { background: transparent; color: #111; }
+
+.btn-edit-row, .btn-del-row {
+  background: none; border: none;
+  font-size: 14px; cursor: pointer;
+  padding: 3px; touch-action: manipulation;
+  opacity: 0.6; flex-shrink: 0;
+}
+.btn-edit-row:hover, .btn-del-row:hover { opacity: 1; }
+
+/* ── BADGES ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: var(--badge-font, 13px);
+  font-weight: 700;
+  margin: 1px;
+  cursor: grab;
+  touch-action: none;
+  transition: box-shadow 0.15s, opacity 0.15s;
+  position: relative;
+}
+.badge.dragging { opacity: 0.35; }
+.badge-ghost {
+  position: fixed; pointer-events: none; z-index: 9999;
+  opacity: 0.9; box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+  transform: rotate(2deg) scale(1.06);
+}
+.badge-green  { background: #27ae60; color: #fff; }
+.badge-yellow { background: #f1c40f; color: #222; }
+.badge-orange { background: #e67e22; color: #fff; }
+.badge-black  { background: #222;    color: #fff; }
+.badge-teal   { background: #16a085; color: #fff; }
+.badge-darkblue  { background: #1a3a5c; color: #fff; }
+.badge-lightblue { background: #aed6f1; color: #111; border: 1.5px solid #5dade2; }
+.badge-red    { background: #c0392b; color: #fff; }
+.badge-blue   { background: #2980b9; color: #fff; }
+.badge-gray   { background: #7f8c8d; color: #fff; }
+.badge-purple { background: #7d3c98; color: #fff; }
+.badge-white  { background: #ffffff; color: #111; border: 1.5px solid #bbb; }
+/* Verlof: behoudt ploegkleur maar krijgt groene rand */
+.badge-white-verlof  { background: #ffffff; color: #111; border: 1.5px solid #bbb; }
+.badge-yellow-verlof { background: #f1c40f; color: #222; }
+.badge-black-verlof  { background: #222;    color: #fff; }
+.badge-green-verlof  { background: #27ae60; color: #fff; }
+
+.badge-aid {
+  font-size: 0.75em;
+  margin-right: 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.badge .badge-del {
+  display: none;
+  background: rgba(0,0,0,0.3); border: none; color: #fff;
+  border-radius: 50%; width: 20px; height: 20px;
+  font-size: 14px; line-height: 20px; text-align: center;
+  cursor: pointer; padding: 0; touch-action: manipulation;
+}
+body.admin-mode .badge:hover .badge-del,
+body.admin-mode .badge:focus .badge-del { display: inline-block; }
+
+.cell.drag-over { background: #dff9fb !important; outline: 3px dashed #16a085; }
+
+/* ── ROW DRAG ── */
+tr.row-dragging { opacity: 0.35; }
+tr.row-drag-over-top td    { border-top: 3px solid #f39c12 !important; }
+tr.row-drag-over-bottom td { border-bottom: 3px solid #f39c12 !important; }
+.row-drag-handle {
+  cursor: grab;
+  font-size: 16px;
+  padding: 2px 4px;
+  opacity: 0.4;
+  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+}
+.row-drag-handle:hover { opacity: 1; }
+body.admin-mode .row-drag-handle { display: inline !important; }
+
+/* ── BRIGADIERS HIGHLIGHT ── */
+tr.row-brigadiers td { background: #fffbea; }
+tr.row-brigadiers .col-afdeling { background: #fff3cd; border-left: 4px solid #f39c12; }
+tr.row-brigadiers .badge {
+  box-shadow: 0 0 0 2px #f39c12;
+  font-weight: 800;
+}
+
+/* ── SECTOROVERSTE HIGHLIGHT ── */
+.badge-sectoroverste {
+  background: #1e8449 !important;
+  color: #fff !important;
+  border: none !important;
+  font-weight: 800 !important;
+}
+
+/* ── ADD BADGE BTN ── */
+.btn-add-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #ecf0f1; border: 2px dashed #aaa;
+  font-size: 17px; color: #888; cursor: pointer;
+  margin: 2px; touch-action: manipulation; vertical-align: middle;
+}
+.btn-add-badge:hover { background: #d5dbdb; color: #333; }
+
+/* ── MODALS ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65); z-index: 200;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: #fff; color: #222; border-radius: 12px;
+  padding: 28px 32px; min-width: 360px; max-width: 92vw;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.45);
+}
+.modal h3 { margin-bottom: 16px; font-size: 24px; }
+.modal label { font-size: 16px; font-weight: 700; display: block; margin-bottom: 5px; }
+.modal input, .modal select {
+  width: 100%; padding: 9px 12px; border: 1.5px solid #ccc;
+  border-radius: 6px; font-size: 18px; margin-bottom: 14px;
+}
+.color-grid, .row-color-grid {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.color-swatch {
+  width: 40px; height: 40px; border-radius: 6px;
+  border: 3px solid transparent; cursor: pointer;
+  touch-action: manipulation; transition: transform 0.1s;
+}
+.color-swatch.selected { border-color: #111; transform: scale(1.18); }
+.modal-btns { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.modal-btns button {
+  padding: 10px 22px; border: none; border-radius: 6px;
+  font-size: 17px; font-weight: 700; cursor: pointer; touch-action: manipulation;
+}
+.btn-confirm { background: #27ae60; color: #fff; }
+.btn-cancel  { background: #95a5a6; color: #fff; }
+.btn-delete  { background: #e74c3c; color: #fff; }
+
+/* ── PIN MODAL ── */
+.pin-dots {
+  display: flex; gap: 12px; justify-content: center; margin: 16px 0 20px;
+}
+.pin-dot {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid #999; background: #fff;
+  transition: background 0.15s;
+}
+.pin-dot.filled { background: #2c3e50; border-color: #2c3e50; }
+.pin-pad {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; max-width: 260px; margin: 0 auto;
+}
+.pin-btn {
+  padding: 16px; font-size: 22px; font-weight: 700;
+  border: 2px solid #ddd; border-radius: 8px;
+  background: #f8f9fa; cursor: pointer; touch-action: manipulation;
+  transition: background 0.1s;
+}
+.pin-btn:hover { background: #e9ecef; }
+.pin-error { color: #c0392b; text-align: center; font-size: 15px; min-height: 20px; margin-top: 8px; }
+
+/* ── DAGELIJKSE RESET BANNER ── */
+.reset-banner {
+  display: none;
+  background: #f39c12; color: #fff;
+  padding: 8px 16px; border-radius: 6px;
+  font-size: 14px; font-weight: 700;
+  flex-shrink: 0; margin-bottom: 6px;
+  align-items: center; justify-content: space-between; gap: 10px;
+}
+.reset-banner.active { display: flex; }
+.reset-banner button {
+  background: #fff; color: #f39c12; border: none;
+  border-radius: 5px; padding: 4px 12px; font-size: 13px;
+  font-weight: 700; cursor: pointer;
+}
+</style>
+</head>
+<body>
+
+<div class="header-row">
+  <div class="date-display" id="date-display"></div>
+  <h1>📦 Outbound Planning</h1>
+  <div style="width:120px"></div>
+</div>
+
+<div class="reset-banner" id="reset-banner">
+  🔄 Nieuwe dag gedetecteerd — bord teruggezet naar standaard indeling
+  <button onclick="dismissBanner()">✓ OK</button>
+</div>
+
+<div class="toolbar">
+  <button class="btn-admin" onclick="openPinModal()">🔐 Beheer</button>
+  <button class="btn-logout" onclick="logout()">🔓 Afmelden</button>
+  <button class="btn-fullscreen" onclick="toggleFullscreen()" title="Volledig scherm">⛶ Volledig scherm</button>
+  <button class="btn-row admin-only" onclick="openRowModal(null)">➕ Nieuwe rij</button>
+  <button class="btn-export" onclick="exportCSV()">⬇️ CSV</button>
+  <button class="btn-reset admin-only" onclick="resetData()">↩️ Reset</button>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#ffffff;border:1.5px solid #bbb;"></div> <strong>A Ploeg</strong></div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f1c40f"></div> <strong>B Ploeg</strong></div>
+  <div class="legend-item"><div class="legend-dot" style="background:#222"></div> <strong>Vaste Late</strong></div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#fff;border:1.5px solid #bbb;"></div>
+    <div class="legend-dot" style="background:#f1c40f;margin-left:2px;"></div>
+    Verlof (kleur = ploeg)
+  </div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7d3c98"></div> Tijdskrediet</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#e67e22"></div> Ziek</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#c0392b"></div> Andere</div>
+  <div class="legend-item" style="align-items:center;gap:5px;">
+    <div style="width:15px;height:15px;border-radius:3px;background:#fff3cd;border:2px solid #f39c12;flex-shrink:0;"></div> Leidinggevende
+  </div>
+  <div class="legend-item"><div class="legend-dot" style="background:#1e8449;"></div> Sectoroverste</div>
+  <div class="legend-item">➕ Hulpverlener</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#aed6f1;border:1.5px solid #5dade2;"></div> Vroege shift (10:00-14:30)</div>
+</div>
+
+<div class="table-wrap">
+<table class="board" id="planboard">
+<thead>
+  <tr>
+    <th class="col-afdeling" style="background:#2c3e50;font-size:clamp(12px,1.2vw,18px);">Afdeling</th>
+    <th class="th-a">A Ploeg</th>
+    <th class="th-b">B Ploeg</th>
+    <th class="th-verlof">Verlof</th>
+    <th class="th-tijdskrediet">Tijdskrediet</th>
+    <th class="th-ziek">Ziek</th>
+  </tr>
+</thead>
+<tbody id="board-body"></tbody>
+</table>
+</div>
+
+<!-- Badge modal -->
+<div class="modal-overlay" id="badge-modal">
+  <div class="modal">
+    <h3 id="bm-title">Naam toevoegen</h3>
+    <label>Naam</label>
+    <input type="text" id="bm-naam" placeholder="Voornaam Achternaam" />
+    <label>Kleur</label>
+    <div class="color-grid" id="bm-colors"></div>
+    <p id="bm-verlof-note" style="display:none;font-size:14px;color:#888;background:#f8f9fa;padding:8px 10px;border-radius:6px;margin-bottom:12px;">
+      🟢 Kleur wordt automatisch bepaald door de ploeg van de persoon.
+    </p>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <input type="checkbox" id="bm-firstaid" style="width:22px;height:22px;cursor:pointer;accent-color:#c0392b;">
+      <label for="bm-firstaid" style="font-size:17px;font-weight:700;cursor:pointer;">➕ Hulpverlener</label>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-delete" id="bm-del" style="display:none" onclick="confirmDeleteBadge()">🗑 Verwijder</button>
+      <button class="btn-cancel" onclick="closeModal('badge-modal')">Annuleer</button>
+      <button class="btn-confirm" onclick="confirmBadge()">✔ Bevestig</button>
+    </div>
+  </div>
+</div>
+
+<!-- Row modal -->
+<div class="modal-overlay" id="row-modal">
+  <div class="modal">
+    <h3 id="rm-title">Nieuwe rij</h3>
+    <label>Naam afdeling</label>
+    <input type="text" id="rm-naam" placeholder="bv. LOGISTIEK" />
+    <label>Labelkleur</label>
+    <div class="row-color-grid" id="rm-colors"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('row-modal')">Annuleer</button>
+      <button class="btn-confirm" onclick="confirmRow()">✔ Bevestig</button>
+    </div>
+  </div>
+</div>
+
+<!-- PIN modal -->
+<div class="modal-overlay" id="pin-modal">
+  <div class="modal" style="max-width:320px;width:100%;">
+    <h3 style="text-align:center;">🔐 Beheertoegang</h3>
+    <p style="text-align:center;font-size:14px;color:#666;margin-bottom:10px;">Voer de PIN in</p>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot" id="pd0"></div>
+      <div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div>
+      <div class="pin-dot" id="pd3"></div>
+    </div>
+    <div class="pin-pad" id="pin-pad"></div>
+    <div class="pin-error" id="pin-error"></div>
+    <div class="modal-btns" style="margin-top:12px;">
+      <button class="btn-cancel" onclick="closeModal('pin-modal')">Annuleer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bevestig verwijder modal -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal" style="max-width:360px;width:100%;">
+    <h3 id="confirm-title" style="margin-bottom:14px;">Bevestig</h3>
+    <p id="confirm-msg" style="font-size:17px;margin-bottom:22px;color:#444;"></p>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('confirm-modal')">Annuleer</button>
+      <button class="btn-delete" id="confirm-ok" onclick="">✔ Verwijder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export modal -->
+<div class="modal-overlay" id="export-modal">
+  <div class="modal" style="min-width:500px;max-width:92vw;">
+    <h3 style="margin-bottom:12px;">📋 Exporteer data</h3>
+    <p style="font-size:14px;color:#666;margin-bottom:10px;">Selecteer alles (Ctrl+A) en kopieer (Ctrl+C)</p>
+    <textarea id="export-text" readonly
+      style="width:100%;height:300px;font-size:12px;font-family:monospace;padding:8px;border:1px solid #ccc;border-radius:4px;resize:vertical;"></textarea>
+    <div class="modal-btns" style="margin-top:12px;">
+      <button class="btn-confirm" onclick="copyExport()">📋 Kopieer alles</button>
+      <button class="btn-cancel" onclick="closeModal('export-modal')">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────
+const ADMIN_PIN     = "1234";   // ← verander dit naar jullie eigen PIN
+const STORAGE_KEY   = "outbound_v15";
+const DATE_KEY      = "outbound_date_v15";
+
+// Standaard indeling: wit (badge-white) → col 0 (A Ploeg), geel (badge-yellow) → col 1 (B Ploeg)
+// Bij dagelijkse reset worden alle namen teruggezet op basis van hun kleur
+const DEFAULT_DATA = [
+  {id:"brigadiers",label:"BRIGADIERS",labelClass:"afd-orange",rows:[
+    {col:0,name:"De Coster M.",color:"badge-white"},
+    {col:0,name:"Borgions J.",color:"badge-white"},
+    {col:1,name:"Busschots K.",color:"badge-yellow"},
+    {col:1,name:"Wouters J.",color:"badge-yellow"},
+    {col:2,name:"Pardon K.",color:"badge-yellow-verlof"},
+    {col:2,name:"Elcus P.",color:"badge-yellow-verlof"},
+  ]},
+  {id:"ipunt",label:"I-PUNKT",labelClass:"afd-orange",rows:[
+    {col:0,name:"Tollet B.",color:"badge-white"},
+    {col:1,name:"Monserez J.",color:"badge-yellow"},
+  ]},
+  {id:"datastewards",label:"DATA-STEWARDS",labelClass:"afd-orange",rows:[
+    {col:1,name:"Rondas J.",color:"badge-yellow"},
+  ]},
+  {id:"ruildienst",label:"RUILDIENST",labelClass:"afd-orange",rows:[
+    {col:0,name:"Van Tricht F.",color:"badge-white"},
+    {col:4,name:"Moyson L.",color:"badge-orange"},
+  ]},
+  {id:"zone3",label:"ZONE 3",labelClass:"afd-orange",rows:[
+    {col:1,name:"Lauwers Robbe",color:"badge-yellow"},
+  ]},
+  {id:"carglass",label:"CARGLASS - HEKLA",labelClass:"afd-plain",rows:[
+    {col:0,name:"Ryckmans M.",color:"badge-white"},
+    {col:2,name:"Grisotto S.",color:"badge-yellow-verlof"},
+    {col:2,name:"Verhoeven Ph.",color:"badge-yellow-verlof"},
+  ]},
+  {id:"hvlx",label:"H V L X",labelClass:"afd-orange",rows:[
+    {col:0,name:"Debruyne G.",color:"badge-white"},
+    {col:1,name:"PAO Heng",color:"badge-yellow"},
+    {col:1,name:"D'Haese L.",color:"badge-yellow"},
+    {col:1,name:"Brettschneider.",color:"badge-teal"},
+    {col:1,name:"Bakour A.",color:"badge-yellow"},
+    {col:4,name:"Demuylder E.",color:"badge-orange"},
+  ]},
+  {id:"mp",label:"M + P",labelClass:"afd-orange",rows:[
+    {col:0,name:"Smets Davy",color:"badge-white"},
+    {col:0,name:"Courtoy S.",color:"badge-white"},
+    {col:0,name:"Fenzaqui T.",color:"badge-white"},
+    {col:0,name:"Verhaegen R.",color:"badge-white"},
+    {col:0,name:"Van Lommel K.",color:"badge-white"},
+    {col:1,name:"Van Meensel G.",color:"badge-yellow"},
+    {col:1,name:"Adonsou K.",color:"badge-yellow"},
+    {col:1,name:"Van Aerschot D.",color:"badge-yellow"},
+    {col:1,name:"Lakloufi M.",color:"badge-yellow"},
+    {col:1,name:"Rolus B.",color:"badge-yellow"},
+    {col:1,name:"Lauwers Thomas",color:"badge-yellow"},
+    {col:1,name:"Cansever K.",color:"badge-yellow"},
+    {col:4,name:"Eggerickx R.",color:"badge-orange"},
+  ]},
+  {id:"inbound",label:"INBOUND",labelClass:"afd-blue",rows:[]},
+  {id:"liften",label:"LIFTEN",labelClass:"afd-orange",rows:[
+    {col:0,name:"Weynants N.",color:"badge-white"},
+    {col:0,name:"Vanderlinde E.",color:"badge-white"},
+    {col:1,name:"Machtelinckx D.",color:"badge-yellow"},
+    {col:1,name:"Paviot O.",color:"badge-yellow"},
+    {col:2,name:"Costers W.",color:"badge-yellow-verlof"},
+  ]},
+  {id:"schaefer",label:"SCHAEFER",labelClass:"afd-red",rows:[
+    {col:0,name:"Oshitov K.",color:"badge-white"},
+    {col:0,name:"Naït Aissa K.",color:"badge-white"},
+    {col:0,name:"Akin I.",color:"badge-white"},
+    {col:0,name:"Nguyen V.",color:"badge-white"},
+    {col:0,name:"Nouna A.",color:"badge-white"},
+    {col:0,name:"Vinckx T.",color:"badge-lightblue"},
+    {col:1,name:"Smelts J.",color:"badge-yellow"},
+    {col:1,name:"Mezouï M.",color:"badge-yellow"},
+    {col:1,name:"Lemal F.",color:"badge-yellow"},
+    {col:1,name:"Van den Borght J.",color:"badge-yellow"},
+    {col:1,name:"Mabilde V.",color:"badge-yellow"},
+    {col:1,name:"Wittebols K.",color:"badge-yellow"},
+    {col:1,name:"Cabrel F.",color:"badge-yellow"},
+    {col:1,name:"Janssen P.",color:"badge-yellow"},
+  ]},
+  {id:"collisage",label:"COLLISAGE",labelClass:"afd-orange",rows:[
+    {col:0,name:"Cucicov R.",color:"badge-white"},
+    {col:1,name:"Vandendriesch J.",color:"badge-yellow"},
+    {col:1,name:"Bah M.",color:"badge-yellow"},
+    {col:1,name:"Gysenberghs K.",color:"badge-yellow"},
+    {col:1,name:"Wittebols G.",color:"badge-yellow"},
+  ]},
+  {id:"eilanden",label:"EILANDEN",labelClass:"afd-orange",rows:[
+    {col:1,name:"De Becker K.",color:"badge-yellow"},
+  ]},
+  {id:"student",label:"STUDENT",labelClass:"afd-red",rows:[
+    {col:0,name:"Naudts Valerie",color:"badge-white"},
+    {col:0,name:"Matthieuws Daisy",color:"badge-white"},
+    {col:0,name:"Voets Clair",color:"badge-white"},
+    {col:0,name:"Plus Mil",color:"badge-white"},
+  ]},
+  {id:"banden",label:"BANDEN",labelClass:"afd-orange",rows:[]},
+];
+
+const BADGE_COLORS = [
+  {key:"badge-white",    hex:"#ffffff"},   // A Ploeg
+  {key:"badge-yellow",   hex:"#f1c40f"},   // B Ploeg
+  {key:"badge-black",    hex:"#222222"},   // Vaste Late
+  {key:"badge-orange",   hex:"#e67e22"},   // Ziek
+  {key:"badge-purple",   hex:"#7d3c98"},   // Tijdskrediet
+  {key:"badge-green",    hex:"#27ae60"},   // Andere
+  {key:"badge-red",      hex:"#c0392b"},   // Andere
+  {key:"badge-blue",     hex:"#2980b9"},   // Andere
+  {key:"badge-gray",     hex:"#7f8c8d"},   // Andere
+  {key:"badge-darkblue",  hex:"#1a3a5c"},   // Andere
+  {key:"badge-lightblue", hex:"#aed6f1"},   // Vroege shift
+];
+const ROW_COLORS = [
+  {key:"afd-orange", hex:"#e67e22"},
+  {key:"afd-red",    hex:"#c0392b"},
+  {key:"afd-blue",   hex:"#2980b9"},
+  {key:"afd-plain",  hex:"#f0f0f0"},
+];
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let data        = JSON.parse(JSON.stringify(DEFAULT_DATA));
+let dragState   = null;
+let badgeCtx    = null;
+let rowCtx      = null;
+let selBadgeColor = "badge-red";
+let selRowColor   = "afd-orange";
+let isAdmin     = false;
+let pinBuffer   = "";
+
+// ─────────────────────────────────────────────
+// DATE & DAILY RESET
+// ─────────────────────────────────────────────
+function todayStr() {
+  return new Date().toISOString().slice(0,10);
+}
+
+function updateDateDisplay() {
+  const d = new Date();
+  const days = ["zondag","maandag","dinsdag","woensdag","donderdag","vrijdag","zaterdag"];
+  const months = ["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"];
+  document.getElementById("date-display").textContent =
+    `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// Enforce correct badge color based on column position
+// col 0 (A Ploeg) → badge-red, col 1 (B Ploeg) → badge-blue
+// col 0=A Ploeg→white, col 1=B Ploeg→blue, col 2=Verlof→yellow, col 3=Tijdskrediet→purple, col 4=Ziek→orange
+const COL_COLOR = ["badge-white","badge-yellow",null,"badge-purple","badge-orange"];
+
+function enforceColors(dataset) {
+  dataset.forEach(row => {
+    row.rows.forEach(b => {
+      // Black, green and gray badges are never overridden
+      const keepColors = ["badge-black","badge-green","badge-gray","badge-lightblue"];
+      if (!keepColors.includes(b.color)) {
+        if (b.col === 2) {
+          b.color = getVerlofColor(b.color);
+        } else {
+          b.color = COL_COLOR[b.col] ?? b.color;
+        }
+      }
+    });
+  });
+  return dataset;
+}
+
+function checkDailyReset() {
+  const lastDate = localStorage.getItem(DATE_KEY) || "";
+  const today    = todayStr();
+  if (lastDate !== today) {
+    // New day — reset board to default
+    data = enforceColors(JSON.parse(JSON.stringify(DEFAULT_DATA)));
+    localStorage.setItem(DATE_KEY, today);
+    saveData();
+    if (lastDate !== "") {
+      document.getElementById("reset-banner").classList.add("active");
+    }
+  } else {
+    loadData();
+  }
+}
+
+function dismissBanner() {
+  document.getElementById("reset-banner").classList.remove("active");
+}
+
+// ─────────────────────────────────────────────
+// PIN / ADMIN
+// ─────────────────────────────────────────────
+function openPinModal() {
+  pinBuffer = "";
+  updatePinDots();
+  document.getElementById("pin-error").textContent = "";
+  buildPinPad();
+  document.getElementById("pin-modal").classList.add("active");
+}
+
+function buildPinPad() {
+  const pad = document.getElementById("pin-pad");
+  pad.innerHTML = "";
+  [1,2,3,4,5,6,7,8,9,"←",0,"✓"].forEach(v => {
+    const btn = document.createElement("button");
+    btn.className = "pin-btn";
+    btn.textContent = v;
+    btn.addEventListener("click", () => handlePin(String(v)));
+    pad.appendChild(btn);
+  });
+}
+
+function handlePin(val) {
+  if (val === "←") {
+    pinBuffer = pinBuffer.slice(0,-1);
+  } else if (val === "✓") {
+    checkPin();
+    return;
+  } else {
+    if (pinBuffer.length >= 4) return;
+    pinBuffer += val;
+    if (pinBuffer.length === 4) {
+      setTimeout(checkPin, 120);
+    }
+  }
+  updatePinDots();
+}
+
+function updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById("pd"+i).classList.toggle("filled", i < pinBuffer.length);
+  }
+}
+
+function checkPin() {
+  if (pinBuffer === ADMIN_PIN) {
+    isAdmin = true;
+    document.body.classList.add("admin-mode");
+    closeModal("pin-modal");
+    document.getElementById("pin-error").textContent = "";
+  } else {
+    document.getElementById("pin-error").textContent = "❌ Foutieve PIN, probeer opnieuw";
+    pinBuffer = "";
+    updatePinDots();
+  }
+}
+
+function logout() {
+  isAdmin = false;
+  document.body.classList.remove("admin-mode");
+  buildBoard();
+}
+
+// ─────────────────────────────────────────────
+// ALTIJD LAATSTE — vaste volgorde per kolom
+// ─────────────────────────────────────────────
+const ALWAYS_LAST  = ["Wittebols K."];
+const ALWAYS_FIRST = ["Goddevriendt M.", "PAO Heng", "Cheval Kim", "De Muylder R."];
+
+const ALWAYS_FIRST_NOCOLOR = ["Vinckx T."];
+
+function sortRowBadges() {
+  data.forEach(row => {
+    for (let c = 0; c < 5; c++) {
+      const inCol  = row.rows.filter(b => b.col === c);
+      const first  = inCol.filter(b =>  ALWAYS_FIRST.includes(b.name) || ALWAYS_FIRST_NOCOLOR.includes(b.name));
+      const last   = inCol.filter(b =>  ALWAYS_LAST.includes(b.name));
+      const middle = inCol.filter(b => !ALWAYS_FIRST.includes(b.name) && !ALWAYS_FIRST_NOCOLOR.includes(b.name) && !ALWAYS_LAST.includes(b.name));
+      if (first.length === 0 && last.length === 0) continue;
+      row.rows = row.rows.filter(b => b.col !== c);
+      row.rows.push(...first, ...middle, ...last);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────
+// BUILD BOARD
+// ─────────────────────────────────────────────
+function buildBoard() {
+  sortRowBadges();
+  const tbody = document.getElementById("board-body");
+  tbody.innerHTML = "";
+  data.forEach(row => {
+    const tr = document.createElement("tr");
+    if (row.id === "brigadiers") tr.classList.add("row-brigadiers");
+
+    // Afdeling cell
+    tr.dataset.rowId = row.id;
+    tr.addEventListener("dragstart", onRowDragStart);
+    tr.addEventListener("dragend",   onRowDragEnd);
+    tr.addEventListener("dragover",  onRowDragOver);
+    tr.addEventListener("drop",      onRowDrop);
+
+    const tdAfd = document.createElement("td");
+    tdAfd.className = "col-afdeling";
+    const wrap = document.createElement("div");
+    wrap.className = "afd-wrap";
+    const lbl = document.createElement("span");
+    lbl.className = `afd-label ${row.labelClass}`;
+    lbl.textContent = row.label;
+    wrap.appendChild(lbl);
+    // Admin-only drag handle
+    const handle = document.createElement("span");
+    handle.className = "row-drag-handle admin-only";
+    handle.textContent = "⠿";
+    handle.title = "Rij verslepen";
+    handle.style.display = "none";
+    // Desktop drag via handle only
+    handle.addEventListener("mousedown", (e) => { e.stopPropagation(); tr.draggable = true; });
+    handle.addEventListener("mouseup",   ()  => { tr.draggable = false; });
+    handle.addEventListener("touchstart", (e) => onRowTouchStart(e, row.id), {passive:false});
+    wrap.appendChild(handle);
+    // Admin-only edit/del buttons
+    const editBtn = document.createElement("button");
+    editBtn.className = "btn-edit-row admin-only";
+    editBtn.title = "Rij bewerken";
+    editBtn.textContent = "✏️";
+    editBtn.onclick = (e) => { e.stopPropagation(); openRowModal(row.id); };
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-del-row admin-only";
+    delBtn.title = "Rij verwijderen";
+    delBtn.textContent = "🗑️";
+    delBtn.onclick = (e) => { e.stopPropagation(); deleteRow(row.id); };
+    wrap.appendChild(editBtn);
+    wrap.appendChild(delBtn);
+    tdAfd.appendChild(wrap);
+    tr.appendChild(tdAfd);
+
+    // 4 data cols
+    for (let c = 0; c < 5; c++) {
+      const td = document.createElement("td");
+      td.className = "cell";
+      td.dataset.rowId = row.id;
+      td.dataset.col   = c;
+      td.addEventListener("dragover",  onDragOver);
+      td.addEventListener("dragleave", onDragLeave);
+      td.addEventListener("drop",      onDrop);
+      td.addEventListener("touchmove", onTouchMove, {passive:false});
+      td.addEventListener("touchend",  onTouchEnd);
+
+      row.rows.filter(b => b.col === c).forEach(b => {
+        td.appendChild(makeBadge(row.id, row.rows.indexOf(b), b));
+      });
+
+      // Admin-only add button
+      const addBtn = document.createElement("button");
+      addBtn.className = "btn-add-badge admin-only";
+      addBtn.textContent = "+";
+      addBtn.title = "Naam toevoegen";
+      addBtn.onclick = () => openBadgeModal("add", row.id, null, c);
+      td.appendChild(addBtn);
+
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  });
+  saveData();
+  requestAnimationFrame(equalizeRows);
+}
+
+function makeBadge(rowId, idx, b) {
+  const span = document.createElement("span");
+  const isSector = ALWAYS_FIRST.includes(b.name);
+  span.className = `badge ${b.color}${isSector ? " badge-sectoroverste" : ""}`;
+  span.draggable = true;
+  span.dataset.rowId = rowId;
+  span.dataset.idx   = idx;
+
+  // Hulpverlener icoon
+  if (b.firstAid) {
+    const aid = document.createElement("span");
+    aid.className = "badge-aid";
+    aid.textContent = "➕";
+    span.appendChild(aid);
+  }
+
+  span.appendChild(document.createTextNode(b.name));
+
+  const delBtn = document.createElement("button");
+  delBtn.className = "badge-del";
+  delBtn.textContent = "×";
+  delBtn.title = "Verwijder";
+  delBtn.onclick = e => { e.stopPropagation(); if (isAdmin) quickDeleteBadge(rowId, idx); };
+  span.appendChild(delBtn);
+
+  span.addEventListener("click", e => {
+    if (e.target === delBtn) return;
+    if (isAdmin) openBadgeModal("edit", rowId, idx, null);
+  });
+  span.addEventListener("dragstart", onDragStart);
+  span.addEventListener("dragend",   onDragEnd);
+  span.addEventListener("touchstart", onTouchStart, {passive:false});
+  return span;
+}
+
+// ─────────────────────────────────────────────
+// DRAG — DESKTOP
+// ─────────────────────────────────────────────
+function onDragStart(e) {
+  const s = e.currentTarget;
+  dragState = { rowId: s.dataset.rowId, badgeIdx: parseInt(s.dataset.idx) };
+  s.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.stopPropagation(); // prevent TR row-drag from intercepting
+}
+function onDragEnd(e) {
+  e.currentTarget.classList.remove("dragging");
+  document.querySelectorAll(".cell.drag-over").forEach(el => el.classList.remove("drag-over"));
+  dragState = null;
+  e.stopPropagation();
+}
+function onDragOver(e)  { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add("drag-over"); }
+function onDragLeave(e) { e.currentTarget.classList.remove("drag-over"); }
+function onDrop(e) {
+  e.preventDefault();
+  e.stopPropagation(); // prevent TR row-drop from also firing
+  const td = e.currentTarget;
+  td.classList.remove("drag-over");
+  if (!dragState) return;
+  moveBadge(dragState.rowId, dragState.badgeIdx, td.dataset.rowId, parseInt(td.dataset.col));
+}
+
+// ─────────────────────────────────────────────
+// DRAG — TOUCH
+// ─────────────────────────────────────────────
+function onTouchStart(e) {
+  if (e.touches.length !== 1) return;
+  e.preventDefault();
+  const span  = e.currentTarget;
+  const touch = e.touches[0];
+  const rect  = span.getBoundingClientRect();
+  const ghost = span.cloneNode(true);
+  ghost.classList.add("badge-ghost");
+  const d = ghost.querySelector(".badge-del");
+  if (d) d.style.display = "none";
+  ghost.style.cssText += `width:${rect.width}px;height:${rect.height}px;left:${rect.left}px;top:${rect.top}px;`;
+  document.body.appendChild(ghost);
+  dragState = { rowId: span.dataset.rowId, badgeIdx: parseInt(span.dataset.idx), ghost,
+    offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top };
+  span.classList.add("dragging");
+}
+function onTouchMove(e) {
+  if (!dragState?.ghost) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  dragState.ghost.style.left = (t.clientX - dragState.offsetX) + "px";
+  dragState.ghost.style.top  = (t.clientY - dragState.offsetY) + "px";
+  dragState.ghost.style.display = "none";
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  dragState.ghost.style.display = "";
+  document.querySelectorAll(".cell.drag-over").forEach(c => c.classList.remove("drag-over"));
+  const cell = el?.closest(".cell");
+  if (cell) cell.classList.add("drag-over");
+}
+function onTouchEnd(e) {
+  if (!dragState) return;
+  const t = e.changedTouches[0];
+  dragState.ghost?.remove();
+  document.querySelectorAll(".cell.drag-over").forEach(c => c.classList.remove("drag-over"));
+  document.querySelectorAll(".badge.dragging").forEach(b => b.classList.remove("dragging"));
+  const el   = document.elementFromPoint(t.clientX, t.clientY);
+  const cell = el?.closest(".cell");
+  if (cell) moveBadge(dragState.rowId, dragState.badgeIdx, cell.dataset.rowId, parseInt(cell.dataset.col));
+  dragState = null;
+}
+
+// Map ploeg-color → verlof variant and back
+function getVerlofColor(color) {
+  const map = {
+    "badge-white":  "badge-white-verlof",
+    "badge-yellow": "badge-yellow-verlof",
+    "badge-black":  "badge-black-verlof",
+    "badge-green":  "badge-green-verlof",
+  };
+  // If already a verlof color, keep it
+  if (color.endsWith("-verlof")) return color;
+  return map[color] || "badge-white-verlof";
+}
+
+function restoreFromVerlof(verlofColor) {
+  const map = {
+    "badge-white-verlof":  "badge-white",
+    "badge-yellow-verlof": "badge-yellow",
+    "badge-black-verlof":  "badge-black",
+    "badge-green-verlof":  "badge-green",
+  };
+  return map[verlofColor] || verlofColor;
+}
+
+function moveBadge(fromRowId, fromIdx, toRowId, toCol) {
+  const fromRow = data.find(r => r.id === fromRowId);
+  const badge   = fromRow.rows[fromIdx];
+  if (!badge) return;
+  fromRow.rows.splice(fromIdx, 1);
+  // Black, green and gray badges keep their color regardless of column
+  const keepColor = ["badge-black","badge-green","badge-gray","badge-lightblue"];
+  let newColor;
+  if (toCol === 2) {
+    // Verlof: toon ploegkleur + groene rand
+    newColor = getVerlofColor(badge.color);
+  } else if (badge.color.endsWith("-verlof")) {
+    // Moving out of verlof: restore ploeg color then apply target col color
+    const restored = restoreFromVerlof(badge.color);
+    newColor = keepColor.includes(restored) ? restored : (COL_COLOR[toCol] ?? restored);
+  } else {
+    newColor = COL_COLOR[toCol] ?? badge.color;
+  }
+  data.find(r => r.id === toRowId).rows.push({ col: toCol, name: badge.name, color: newColor, firstAid: badge.firstAid || false });
+  buildBoard();
+}
+
+// ─────────────────────────────────────────────
+// ROW DRAG — DESKTOP
+// ─────────────────────────────────────────────
+let rowDragId = null;
+
+function onRowDragStart(e) {
+  if (!isAdmin || !e.currentTarget.draggable) { e.preventDefault(); return; }
+  rowDragId = e.currentTarget.dataset.rowId;
+  e.currentTarget.classList.add("row-dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.stopPropagation();
+}
+function onRowDragEnd(e) {
+  e.currentTarget.classList.remove("row-dragging");
+  e.currentTarget.draggable = false;
+  document.querySelectorAll(".row-drag-over-top, .row-drag-over-bottom")
+    .forEach(el => { el.classList.remove("row-drag-over-top","row-drag-over-bottom"); });
+  rowDragId = null;
+  // Ensure all TRs are non-draggable after drag ends
+  document.querySelectorAll("tr[data-row-id]").forEach(r => { r.draggable = false; });
+}
+function onRowDragOver(e) {
+  if (!rowDragId) return;
+  const tr = e.currentTarget;
+  if (tr.dataset.rowId === rowDragId) return;
+  e.preventDefault(); e.stopPropagation();
+  document.querySelectorAll(".row-drag-over-top, .row-drag-over-bottom")
+    .forEach(el => { el.classList.remove("row-drag-over-top","row-drag-over-bottom"); });
+  const rect = tr.getBoundingClientRect();
+  const mid  = rect.top + rect.height / 2;
+  tr.classList.add(e.clientY < mid ? "row-drag-over-top" : "row-drag-over-bottom");
+}
+function onRowDragOverCell(e) {
+  // Prevent badge dragover from firing on row-level when not row-dragging
+  if (!rowDragId) return;
+  e.stopPropagation();
+}
+function onRowDrop(e) {
+  if (!rowDragId) return;
+  const tr = e.currentTarget;
+  if (tr.dataset.rowId === rowDragId) return;
+  e.preventDefault(); e.stopPropagation();
+  const isTop = tr.classList.contains("row-drag-over-top");
+  document.querySelectorAll(".row-drag-over-top, .row-drag-over-bottom")
+    .forEach(el => { el.classList.remove("row-drag-over-top","row-drag-over-bottom"); });
+  moveRow(rowDragId, tr.dataset.rowId, isTop);
+}
+
+// ─────────────────────────────────────────────
+// ROW DRAG — TOUCH
+// ─────────────────────────────────────────────
+let rowTouchState = null;
+
+function onRowTouchStart(e, rowId) {
+  if (!isAdmin) return;
+  e.preventDefault(); e.stopPropagation();
+  const touch = e.touches[0];
+  const tr = e.currentTarget.closest("tr");
+
+  const ghost = tr.cloneNode(true);
+  ghost.style.cssText = `position:fixed;z-index:9999;opacity:0.85;pointer-events:none;
+    width:${tr.offsetWidth}px;left:${tr.getBoundingClientRect().left}px;
+    top:${tr.getBoundingClientRect().top}px;box-shadow:0 6px 24px rgba(0,0,0,0.3);
+    transform:rotate(1deg);background:#fff;`;
+  document.body.appendChild(ghost);
+
+  rowTouchState = {
+    rowId,
+    ghost,
+    offsetY: touch.clientY - tr.getBoundingClientRect().top,
+  };
+  tr.classList.add("row-dragging");
+
+  document.addEventListener("touchmove", onRowTouchMove, {passive:false});
+  document.addEventListener("touchend",  onRowTouchEnd);
+}
+
+function onRowTouchMove(e) {
+  if (!rowTouchState) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  rowTouchState.ghost.style.top = (t.clientY - rowTouchState.offsetY) + "px";
+
+  rowTouchState.ghost.style.display = "none";
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  rowTouchState.ghost.style.display = "";
+
+  document.querySelectorAll(".row-drag-over-top, .row-drag-over-bottom")
+    .forEach(el => el.classList.remove("row-drag-over-top","row-drag-over-bottom"));
+
+  const tr = el?.closest("tr[data-row-id]");
+  if (tr && tr.dataset.rowId !== rowTouchState.rowId) {
+    const rect = tr.getBoundingClientRect();
+    tr.classList.add(t.clientY < rect.top + rect.height/2 ? "row-drag-over-top" : "row-drag-over-bottom");
+  }
+}
+
+function onRowTouchEnd(e) {
+  if (!rowTouchState) return;
+  document.removeEventListener("touchmove", onRowTouchMove);
+  document.removeEventListener("touchend",  onRowTouchEnd);
+
+  const t = e.changedTouches[0];
+  rowTouchState.ghost.style.display = "none";
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  rowTouchState.ghost.remove();
+
+  document.querySelectorAll(".row-drag-over-top, .row-drag-over-bottom")
+    .forEach(el => el.classList.remove("row-drag-over-top","row-drag-over-bottom"));
+  document.querySelectorAll(".row-dragging")
+    .forEach(el => el.classList.remove("row-dragging"));
+
+  const tr = el?.closest("tr[data-row-id]");
+  if (tr && tr.dataset.rowId !== rowTouchState.rowId) {
+    const rect = tr.getBoundingClientRect();
+    const isTop = t.clientY < rect.top + rect.height/2;
+    moveRow(rowTouchState.rowId, tr.dataset.rowId, isTop);
+  }
+  rowTouchState = null;
+}
+
+function moveRow(fromId, toId, insertBefore) {
+  const fromIdx = data.findIndex(r => r.id === fromId);
+  const toIdx   = data.findIndex(r => r.id === toId);
+  if (fromIdx === -1 || toIdx === -1) return;
+  const [row] = data.splice(fromIdx, 1);
+  const newIdx = data.findIndex(r => r.id === toId);
+  data.splice(insertBefore ? newIdx : newIdx + 1, 0, row);
+  buildBoard();
+}
+
+// ─────────────────────────────────────────────
+// BADGE MODAL
+// ─────────────────────────────────────────────
+function openBadgeModal(mode, rowId, idx, col) {
+  badgeCtx = { mode, rowId, idx, col };
+  const b = mode === "edit" ? data.find(r => r.id === rowId).rows[idx] : null;
+  document.getElementById("bm-title").textContent = mode === "edit" ? "Naam bewerken" : "Naam toevoegen";
+  document.getElementById("bm-naam").value = b?.name || "";
+  document.getElementById("bm-del").style.display = mode === "edit" ? "" : "none";
+  selBadgeColor = b?.color || "badge-white";
+
+  // Determine which col this badge is in
+  const badgeCol = (mode === "edit") ? b?.col : col;
+  const inVerlof = badgeCol === 2;
+
+  // Hide color picker for verlof col — kleur wordt bepaald door ploeg
+  const colorSection = document.getElementById("bm-colors");
+  const colorLabel   = colorSection?.previousElementSibling;
+  const verlofNote   = document.getElementById("bm-verlof-note");
+
+  if (inVerlof) {
+    colorSection.style.display = "none";
+    if (colorLabel && colorLabel.tagName === "LABEL") colorLabel.style.display = "none";
+    if (verlofNote) verlofNote.style.display = "block";
+  } else {
+    colorSection.style.display = "";
+    if (colorLabel && colorLabel.tagName === "LABEL") colorLabel.style.display = "";
+    if (verlofNote) verlofNote.style.display = "none";
+    renderColorGrid("bm-colors", BADGE_COLORS, selBadgeColor, k => { selBadgeColor = k; });
+  }
+
+  document.getElementById("badge-modal").classList.add("active");
+  setTimeout(() => document.getElementById("bm-naam").focus(), 100);
+}
+function confirmBadge() {
+  const naam = document.getElementById("bm-naam").value.trim();
+  if (!naam) { alert("Voer een naam in."); return; }
+  const row = data.find(r => r.id === badgeCtx.rowId);
+  const isFirstAid = document.getElementById("bm-firstaid").checked;
+  if (badgeCtx.mode === "edit") {
+    const currentCol = row.rows[badgeCtx.idx].col;
+    row.rows[badgeCtx.idx].name     = naam;
+    row.rows[badgeCtx.idx].firstAid = isFirstAid;
+    // Don't change color for verlof badges
+    if (currentCol !== 2) row.rows[badgeCtx.idx].color = selBadgeColor;
+  } else {
+    const autoColor = badgeCtx.col === 2 ? "badge-white-verlof" : selBadgeColor;
+    row.rows.push({ col: badgeCtx.col, name: naam, color: autoColor, firstAid: isFirstAid });
+  }
+  closeModal("badge-modal");
+  buildBoard();
+}
+function confirmDeleteBadge() {
+  if (badgeCtx?.mode !== "edit") return;
+  data.find(r => r.id === badgeCtx.rowId).rows.splice(badgeCtx.idx, 1);
+  closeModal("badge-modal");
+  buildBoard();
+}
+function quickDeleteBadge(rowId, idx) {
+  data.find(r => r.id === rowId).rows.splice(idx, 1);
+  buildBoard();
+}
+
+// ─────────────────────────────────────────────
+// ROW MODAL
+// ─────────────────────────────────────────────
+function openRowModal(rowId) {
+  rowCtx = { mode: rowId ? "edit" : "add", rowId };
+  const row = rowId ? data.find(r => r.id === rowId) : null;
+  document.getElementById("rm-title").textContent = rowId ? "Rij bewerken" : "Nieuwe rij";
+  document.getElementById("rm-naam").value = row?.label || "";
+  selRowColor = row?.labelClass || "afd-orange";
+  renderColorGrid("rm-colors", ROW_COLORS, selRowColor, k => { selRowColor = k; });
+  document.getElementById("row-modal").classList.add("active");
+  setTimeout(() => document.getElementById("rm-naam").focus(), 100);
+}
+function confirmRow() {
+  const naam = document.getElementById("rm-naam").value.trim();
+  if (!naam) { alert("Voer een naam in."); return; }
+  if (rowCtx.mode === "edit") {
+    const row = data.find(r => r.id === rowCtx.rowId);
+    row.label = naam.toUpperCase(); row.labelClass = selRowColor;
+  } else {
+    data.push({ id: Math.random().toString(36).slice(2,8), label: naam.toUpperCase(), labelClass: selRowColor, rows: [] });
+  }
+  closeModal("row-modal"); buildBoard();
+}
+function showConfirm(message, onOk) {
+  document.getElementById("confirm-msg").textContent = message;
+  const okBtn = document.getElementById("confirm-ok");
+  okBtn.onclick = () => { closeModal("confirm-modal"); onOk(); };
+  document.getElementById("confirm-modal").classList.add("active");
+}
+
+function deleteRow(rowId) {
+  const row = data.find(r => r.id === rowId);
+  if (!row) return;
+  showConfirm(`Rij "${row.label}" verwijderen?`, () => {
+    data = data.filter(r => r.id !== rowId);
+    buildBoard();
+  });
+}
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+function renderColorGrid(containerId, colors, selectedKey, onChange) {
+  const grid = document.getElementById(containerId);
+  grid.innerHTML = "";
+  colors.forEach(c => {
+    const sw = document.createElement("div");
+    sw.className = "color-swatch" + (c.key === selectedKey ? " selected" : "");
+    sw.style.background = c.key === "afd-plain" ? "#ddd" : c.hex;
+    if (c.key === "badge-white") sw.style.border = "3px solid #bbb";
+    sw.title = c.key;
+    sw.addEventListener("click", () => {
+      grid.querySelectorAll(".color-swatch").forEach(s => s.classList.remove("selected"));
+      sw.classList.add("selected"); onChange(c.key);
+    });
+    grid.appendChild(sw);
+  });
+}
+function closeModal(id) { document.getElementById(id).classList.remove("active"); }
+
+function saveData() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+}
+function loadData() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) data = JSON.parse(saved);
+  } catch(e) {}
+}
+function resetData() {
+  showConfirm("Bord terugzetten naar standaard indeling?", () => {
+    data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    localStorage.setItem(DATE_KEY, todayStr());
+    saveData(); buildBoard();
+  });
+}
+
+function exportCSV() {
+  let csv = "Afdeling,A Ploeg,B Ploeg,Verlof,Tijdskrediet,Ziek\n";
+  data.forEach(row => {
+    const cols = [[],[],[],[],[]];
+    row.rows.forEach(b => { if(cols[b.col]) cols[b.col].push(b.name); });
+    csv += `"${row.label}","${cols[0].join('; ')}","${cols[1].join('; ')}","${cols[2].join('; ')}","${cols[3].join('; ')}"\n`;
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8;"}));
+  a.download = `outbound_${todayStr()}.csv`; a.click();
+}
+
+// ─────────────────────────────────────────────
+// FULLSCREEN
+// ─────────────────────────────────────────────
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+}
+document.addEventListener("fullscreenchange", () => {
+  const btn = document.querySelector(".btn-fullscreen");
+  if (btn) btn.textContent = document.fullscreenElement ? "✕ Scherm verlaten" : "⛶ Volledig scherm";
+  equalizeRows();
+});
+
+// ─────────────────────────────────────────────
+// EQUALIZE ROW HEIGHTS — alle rijen gelijke hoogte
+// ─────────────────────────────────────────────
+function equalizeRows() {
+  const tbody = document.getElementById("board-body");
+  const wrap  = document.querySelector(".table-wrap");
+  const thead = document.querySelector(".board thead");
+  if (!tbody || !wrap || !thead) return;
+  const rows = Array.from(tbody.querySelectorAll("tr"));
+  if (!rows.length) return;
+
+  const wrapH = wrap.offsetHeight;
+  const headH = thead.offsetHeight;
+  if (wrapH < 50 || headH < 5) return;
+
+  // Available height for all data rows
+  const available = wrapH - headH;
+  const rowH = Math.floor(available / rows.length);
+  if (rowH < 8) return;
+
+  // Scale fonts FIRST so badge sizes are correct when we measure
+  const badgeFont  = Math.min(19, Math.max(8,  Math.floor(rowH * 0.32)));
+  const headerFont = Math.min(21, Math.max(9,  Math.floor(rowH * 0.36)));
+  document.documentElement.style.setProperty("--badge-font",  badgeFont  + "px");
+  document.documentElement.style.setProperty("--header-font", headerFont + "px");
+
+  const padV = Math.max(1, Math.floor(rowH * 0.04));
+  const padH = Math.max(3, Math.floor(rowH * 0.09));
+  const gap  = Math.max(1, Math.floor(rowH * 0.02));
+
+  document.querySelectorAll(".badge").forEach(b => {
+    b.style.padding    = padV + "px " + padH + "px";
+    b.style.margin     = gap + "px";
+    b.style.lineHeight = "1";
+  });
+  document.querySelectorAll(".afd-label").forEach(l => {
+    l.style.padding    = padV + "px " + padH + "px";
+    l.style.lineHeight = "1.1";
+  });
+  document.querySelectorAll(".btn-add-badge").forEach(b => {
+    b.style.width  = Math.min(26, rowH * 0.4) + "px";
+    b.style.height = Math.min(26, rowH * 0.4) + "px";
+    b.style.fontSize = Math.min(20, rowH * 0.3) + "px";
+  });
+
+  // Apply row heights via CSS custom property on each tr
+  rows.forEach(tr => {
+    tr.style.height    = rowH + "px";
+    tr.style.maxHeight = rowH + "px";
+    tr.querySelectorAll("td").forEach(td => {
+      td.style.height    = rowH + "px";
+      td.style.maxHeight = rowH + "px";
+      td.style.overflow  = "hidden";
+    });
+  });
+
+  // Give the table an explicit height = wrapH so Chrome distributes rows correctly
+  const board = document.getElementById("planboard");
+  if (board) {
+    board.style.height = wrapH + "px";
+  }
+}
+
+window.addEventListener("resize", equalizeRows);
+
+// Close on overlay click
+["badge-modal","row-modal","pin-modal","confirm-modal","export-modal"].forEach(id => {
+  document.getElementById(id).addEventListener("click", e => {
+    if (e.target === e.currentTarget) closeModal(id);
+  });
+});
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+updateDateDisplay();
+checkDailyReset();
+
+// Migratie: forceer Vinckx T. altijd op lichtblauw
+(function migrateVinckx() {
+  let changed = false;
+  data.forEach(row => {
+    row.rows.forEach(b => {
+      if (b.name === "Vinckx T.") {
+        b.color = "badge-lightblue";
+        changed = true;
+      }
+    });
+  });
+  if (changed) saveData();
+})();
+
+buildBoard();
+
+// equalizeRows meerdere keren aanroepen om zeker te zijn dat
+// de browser de layout volledig heeft opgebouwd voor we schalen
+function initEqualize() {
+  [50, 150, 300, 600, 1000, 2000].forEach(ms => setTimeout(equalizeRows, ms));
+  const wrap = document.querySelector(".table-wrap");
+  if (wrap && window.ResizeObserver) {
+    new ResizeObserver(() => equalizeRows()).observe(wrap);
+  }
+}
+if (document.readyState === "complete") {
+  initEqualize();
+} else {
+  window.addEventListener("load", initEqualize);
+}
+
+
+</script>
+</body>
+</html>
